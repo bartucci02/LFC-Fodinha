@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fodinha — Liga do Clubinho</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- MODAL DE LOGIN -->
+<div class="modal-overlay" id="modalLogin">
+  <div class="modal">
+    <h2>🔐 Acesso Admin</h2>
+    <p>Apenas membros da LFC podem registrar resultados.</p>
+    <label>Email</label>
+    <input type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="email">
+    <label>Senha</label>
+    <input type="password" id="loginSenha" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+    <div class="modal-error" id="loginErro"></div>
+    <div class="modal-actions">
+      <button class="btn btn-g" style="flex:1" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-r" style="flex:1" id="btnLogin" onclick="fazerLogin()">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="hdr">
+  <h1>🃏 Fodinha</h1>
+  <p>Liga do Clubinho — LFC</p>
+  <button class="auth-btn" id="authBtn" onclick="clicouAuth()">🔒 Admin</button>
+</div>
+
+<div class="tabs">
+  <button class="tab on" onclick="tab('game',this)">🎮 Jogo</button>
+  <button class="tab" onclick="tab('stats',this)">📊 Stats</button>
+  <button class="tab" onclick="tab('tornios',this)">🏆 Torneios</button>
+  <button class="tab" onclick="tab('rivals',this)">⚔️ Rivalidades</button>
+  <button class="tab" onclick="tab('extras',this)">⭐ Liga</button>
+</div>
+
+<div id="page-game" class="page on">
+<div class="wrap">
+  <div class="card">
+    <div class="card-title">🏆 Torneio (opcional)</div>
+    <select id="selectTorneioJogo" class="select-db" onchange="mudarTorneio(this.value)">
+      <option value="">Modo livre — sem regras</option>
+    </select>
+    <div id="torneioPanel"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">➕ Adicionar Jogador</div>
+    <div class="row">
+      <input type="text" id="pname" placeholder="Nome (igual no banco)" onkeydown="if(event.key==='Enter')addPlayer()">
+      <input type="number" id="plives" value="5" min="0" max="99">
+      <button class="btn btn-r" onclick="addPlayer()">Add</button>
+    </div>
+  </div>
+
+  <div class="gctrls">
+    <button class="btn btn-g" onclick="resetGame()">🔄 Novo Jogo</button>
+    <button class="btn btn-a" id="btnSetAll" onclick="setAll()">⚙️ Vidas p/ Todos</button>
+    <button class="btn btn-a" id="btnProxRodada" onclick="proximaRodada()" style="display:none">➡️ Próxima Rodada</button>
+  </div>
+
+  <div class="card qualifying-panel" id="qualifyingPanel" style="display:none"></div>
+
+  <div class="winner" id="winBanner">
+    <h2>🏆 <span id="winName"></span> VENCEU!</h2>
+    <p style="margin-bottom: 15px;">Campeão do Fodinha!</p>
+
+    <!-- Visível apenas para admins logados -->
+    <div class="registro-banco admin-only">
+      <p style="font-size: 0.85rem; font-weight: bold; margin-bottom: 8px;">Registrar Resultado Oficial:</p>
+      <select id="selectTorneio" class="select-db">
+        <option value="">Selecione o Torneio...</option>
+      </select>
+      <select id="selectVice" class="select-db" style="margin-top: 8px;">
+        <option value="">Selecione o Vice-Campeão...</option>
+      </select>
+      <button class="btn btn-r" style="width: 100%; margin-top: 10px;" onclick="registrarNoBanco()">💾 Salvar no Banco de Dados</button>
+    </div>
+
+    <!-- Visível apenas para não-logados -->
+    <div class="registro-bloqueado" id="registroBloqueado" style="background:rgba(0,0,0,.2);padding:12px;border-radius:8px;border:1px dashed rgba(255,255,255,.15);font-size:.82rem;color:rgba(255,255,255,.6)">
+      🔒 <button onclick="clicouAuth()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-weight:700;font-size:.82rem;text-decoration:underline">Entre como admin</button> para registrar o resultado oficial.
+    </div>
+  </div>
+
+  <div id="playerList"></div>
+</div>
+</div>
+
+<div id="page-stats" class="page">
+<div class="wrap">
+  <div class="card">
+    <div class="card-title">🎖️ Maiores Campeões por Torneio</div>
+    <div class="tag-list" id="campeoesList">Buscando banco de dados...</div>
+  </div>
+  <div class="card">
+    <div class="card-title">🔥 Maiores Hegemonias</div>
+    <div class="tag-list" id="hegemoniasList">Buscando banco de dados...</div>
+  </div>
+  <div class="card">
+    <div class="card-title">🥇 Ranking de Títulos</div>
+    <div id="rankTitulos"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🏟️ Ranking de Finais</div>
+    <div id="rankFinais"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🏅 Títulos por Jogador</div>
+    <div id="titulosDetalhados">Buscando banco de dados...</div>
+  </div>
+</div>
+</div>
+
+<div id="page-tornios" class="page">
+<div class="wrap">
+  <div class="card">
+    <div class="card-title">🏆 Histórico de Torneios</div>
+    <div id="torniosList"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">📜 Regras dos Torneios</div>
+    <div id="regrasList">Buscando banco de dados...</div>
+  </div>
+</div>
+</div>
+
+<div id="page-rivals" class="page">
+<div class="wrap">
+  <div class="card">
+    <div class="card-title">⚔️ Rivalidades</div>
+    <div id="rivalidadesList"></div>
+  </div>
+</div>
+</div>
+
+<div id="page-extras" class="page">
+<div class="wrap">
+  <div class="card">
+    <div class="card-title">👑 Big Six</div>
+    <div class="bigsix">
+      <div class="b6">Lucio</div><div class="b6">Naka</div><div class="b6">Drito</div>
+      <div class="b6">Dog</div><div class="b6">Leda</div><div class="b6">Neto</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">🎭 Apelidos</div>
+    <div class="ap-row"><span class="ap-n">Lucio</span><span class="ap-t">Chefão da Liga</span></div>
+    <div class="ap-row"><span class="ap-n">Drito</span><span class="ap-t">Predador Eficiente</span></div>
+    <div class="ap-row"><span class="ap-n">Naka e Dog</span><span class="ap-t">Os Gêmeos da Rivalidade</span></div>
+    <div class="ap-row"><span class="ap-n">Leda</span><span class="ap-t">Matador Silencioso</span></div>
+    <div class="ap-row"><span class="ap-n">Neto</span><span class="ap-t">Rei dos Torneios de Peso</span></div>
+    <div class="ap-row"><span class="ap-n">Red</span><span class="ap-t">Francoatirador</span></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🏛️ Cargos da LFC</div>
+    <div class="cargo-row"><span class="cargo-t">Conselheiro</span><span class="cargo-n">Lucio</span></div>
+    <div class="cargo-row"><span class="cargo-t">Diretor Jurídico</span><span class="cargo-n">Dog</span></div>
+    <div class="cargo-row"><span class="cargo-t">Secretário Geral</span><span class="cargo-n">Naka</span></div>
+    <div class="cargo-row"><span class="cargo-t">Diretor de backoffice</span><span class="cargo-n">Drito</span></div>
+  </div>
+
+  <!-- Visível apenas para admins logados -->
+  <div class="card admin-only">
+    <div class="card-title">➕ Adicionar Jogador ao Banco</div>
+    <div class="row" style="margin-bottom:10px">
+      <input type="text" id="novoJogadorNome" placeholder="Nome do jogador" onkeydown="if(event.key==='Enter')adicionarJogadorNoBanco()">
+    </div>
+    <button class="btn btn-g" style="width:100%" onclick="adicionarJogadorNoBanco()">💾 Adicionar ao Banco de Dados</button>
+  </div>
+
+  <div class="card admin-only">
+    <div class="card-title">🗑️ Remover Jogador do Banco</div>
+    <div class="row" style="margin-bottom:10px">
+      <select id="selectRemoverJogador" class="select-db" style="flex:1">
+        <option value="">Selecione um jogador...</option>
+      </select>
+    </div>
+    <button class="btn btn-r" style="width:100%" onclick="removerJogadorDoBanco()">🗑️ Remover do Banco de Dados</button>
+  </div>
+
+  <div class="card admin-only">
+    <div class="card-title">➕ Adicionar Torneio</div>
+    <div class="form-torneio">
+      <label>Nome do torneio</label>
+      <input type="text" id="ntNome" placeholder="Ex.: Copa das Confederações">
+
+      <label>Fases</label>
+      <select id="ntFases" class="select-db" onchange="atualizarFormTorneio()">
+        <option value="1">Apenas 1 fase</option>
+        <option value="2">2 fases (qualificatória + padrão)</option>
+      </select>
+
+      <div id="ntCampoVidas">
+        <label>Vidas iniciais</label>
+        <input type="number" id="ntVidasIniciais" value="5" min="1" max="99">
+      </div>
+
+      <div id="ntCampoQualif" style="display:none">
+        <label>Limite de vidas da fase qualificatória</label>
+        <input type="number" id="ntVidasQualif" value="5" min="1" max="99">
+      </div>
+
+      <label>Contagem de cartas — Fase 1
+        <span class="form-help">padrao | fixo:N | inc:A-B | dec:A-B | lista:1,3,5</span>
+      </label>
+      <input type="text" id="ntCartas1" placeholder="padrao" value="padrao">
+
+      <div id="ntCampoCartas2" style="display:none">
+        <label>Contagem de cartas — Fase 2
+          <span class="form-help">mesmo formato</span>
+        </label>
+        <input type="text" id="ntCartas2" placeholder="padrao" value="padrao">
+      </div>
+
+      <div class="row" style="gap:8px">
+        <div style="flex:1">
+          <label>Mín. jogadores</label>
+          <input type="number" id="ntMin" value="2" min="2" max="99">
+        </div>
+        <div style="flex:1">
+          <label>Máx. jogadores (opcional)</label>
+          <input type="number" id="ntMax" placeholder="—" min="2" max="99">
+        </div>
+      </div>
+
+      <label>Regras extras (texto livre)</label>
+      <textarea id="ntExtras" rows="3" placeholder="Ex.: Pode ser jogado apenas ao nascer do sol."></textarea>
+
+      <label class="check-line">
+        <input type="checkbox" id="ntSemDoc"> Sem documentação de regras
+      </label>
+
+      <button class="btn btn-g" style="width:100%;margin-top:10px" onclick="criarTorneioNoBanco()">💾 Salvar Torneio no Banco</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
