@@ -62,7 +62,9 @@
   <div class="gctrls">
     <button class="btn btn-g" onclick="resetGame()">🔄 Novo Jogo</button>
     <button class="btn btn-a" id="btnSetAll" onclick="setAll()">⚙️ Vidas p/ Todos</button>
+    <button class="btn btn-a" id="btnRodadaAnt" onclick="rodadaAnterior()" style="display:none">⬅️ Rodada Anterior</button>
     <button class="btn btn-a" id="btnProxRodada" onclick="proximaRodada()" style="display:none">➡️ Próxima Rodada</button>
+    <button class="btn btn-r" id="btnCancelarEd" onclick="cancelarEdicao()" style="display:none">🚫 Cancelar Edição</button>
   </div>
 
   <div class="card qualifying-panel" id="qualifyingPanel" style="display:none"></div>
@@ -77,9 +79,8 @@
       <select id="selectTorneio" class="select-db">
         <option value="">Selecione o Torneio...</option>
       </select>
-      <select id="selectVice" class="select-db" style="margin-top: 8px;">
-        <option value="">Selecione o Vice-Campeão...</option>
-      </select>
+      <p style="font-size: 0.78rem; color: rgba(255,255,255,.7); margin: 8px 0 4px;">Vice(s)-campeão(ões) — marque os finalistas:</p>
+      <div id="viceList" class="penalizado-list"></div>
       <button class="btn btn-r" style="width: 100%; margin-top: 10px;" onclick="registrarNoBanco()">💾 Salvar no Banco de Dados</button>
     </div>
 

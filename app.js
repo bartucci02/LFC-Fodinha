@@ -36,6 +36,7 @@ function atualizarUI() {
         btn.classList.remove('logged');
         if (bloqueado) bloqueado.style.display = 'block';
     }
+    if (typeof renderControles === 'function') renderControles();
 }
 
 function clicouAuth() {
@@ -114,45 +115,6 @@ function getTorneioRegra(){
 function isQualifying(){
   const t = getTorneioRegra();
   return !!(t && t.fases === 2 && gameState.fase === 1);
-}
-
-function cartasDaRodada(rodada, regra){
-  if(!regra) regra = 'padrao';
-  if(regra === 'padrao'){
-    return [1,2,3,4,5][(rodada - 1) % 5];
-  }
-  if(regra.startsWith('fixo:')){
-    const n = parseInt(regra.slice(5));
-    return isNaN(n) ? null : n;
-  }
-  if(regra.startsWith('inc:')){
-    const m = regra.slice(4).match(/(\d+)\s*-\s*(\d+)/);
-    if(!m) return null;
-    const a = +m[1], b = +m[2];
-    const seq = [];
-    for(let i = a; i <= b; i++) seq.push(i);
-    return seq.length ? seq[(rodada - 1) % seq.length] : null;
-  }
-  if(regra.startsWith('dec:')){
-    const m = regra.slice(4).match(/(\d+)\s*-\s*(\d+)/);
-    if(!m) return null;
-    const a = +m[1], b = +m[2];
-    const seq = [];
-    for(let i = a; i >= b; i--) seq.push(i);
-    return seq.length ? seq[(rodada - 1) % seq.length] : null;
-  }
-  if(regra.startsWith('lista:')){
-    const seq = regra.slice(6).split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-    return seq.length ? seq[(rodada - 1) % seq.length] : null;
-  }
-  return null;
-}
-
-function cartasAtuais(){
-  const t = getTorneioRegra();
-  if(!t) return null;
-  const regra = (gameState.fase === 2 && t.cartas_fase2) ? t.cartas_fase2 : t.cartas_fase1;
-  return cartasDaRodada(gameState.rodada, regra);
 }
 
 function aplicarVidasIniciais(){
@@ -248,6 +210,12 @@ function proximaRodada(){
   save(); render();
 }
 
+function rodadaAnterior(){
+  if(gameState.rodada <= 1) return;
+  gameState.rodada -= 1;
+  save(); render();
+}
+
 function proximaRodadaQualificatoria(){
   const checks = document.querySelectorAll('#qualifyingPanel input.penalizado-check:checked');
   if(!checks.length){
@@ -311,17 +279,17 @@ function render(){
     }
   }
 
-  const sorted = players.map((p,i)=>({...p,i})).sort((a,b)=>{
-    if(semVencedorAutomatico) return b.lives - a.lives;
-    if(a.lives===0&&b.lives>0) return 1;
-    if(b.lives===0&&a.lives>0) return -1;
-    return b.lives - a.lives;
-  });
+  // Ordem de exibição fixa (inserção). Medalhas seguem ranking por vidas.
+  const medalRank = {};
+  players.map((p,i)=>({i, lives:p.lives}))
+    .sort((a,b)=>b.lives - a.lives)
+    .forEach((r, di)=>{ medalRank[r.i] = di; });
 
   const medals=['🥇','🥈','🥉'];
-  list.innerHTML = sorted.map((p, di)=>{
+  list.innerHTML = players.map((p, i)=>{
     const dead = !semVencedorAutomatico && p.lives===0;
     const champ = winner && p.name===winner.name;
+    const di = medalRank[i];
     const icon = champ?'🏆':dead?'💀':(di<3?medals[di]:'');
     const heartCount = Math.max(p.max || 0, p.lives || 0, 1);
     const hearts = Array.from({length:heartCount},(_,k)=>`<span class="heart">${k<p.lives?'❤️':'🖤'}</span>`).join('');
@@ -332,11 +300,11 @@ function render(){
         <div class="hearts">${hearts}</div>
       </div>
       <div class="plives">
-        <button class="lbtn m" onclick="chgLives(${p.i},-1)" ${dead?'disabled':''}>−</button>
+        <button class="lbtn m" onclick="chgLives(${i},-1)" ${dead?'disabled':''}>−</button>
         <span class="lnum ${dead?'zero':''}">${p.lives}</span>
-        <button class="lbtn p" onclick="chgLives(${p.i},+1)">+</button>
+        <button class="lbtn p" onclick="chgLives(${i},+1)">+</button>
       </div>
-      <button class="pdel" onclick="rmPlayer(${p.i})" title="Remover">✕</button>
+      <button class="pdel" onclick="rmPlayer(${i})" title="Remover">✕</button>
     </div>`;
   }).join('');
 }
@@ -359,21 +327,22 @@ function renderTorneioPanel(){
     inputLives.value = t.fases === 2 ? 0 : (t.vidas_iniciais || 5);
   }
 
-  const cartas = cartasAtuais();
   const faseNome = t.fases === 2
     ? (gameState.fase === 1 ? '⚡ Fase Qualificatória' : '🎯 Fase Padrão')
     : '🎮 Fase Única';
   const limiteInfo = t.fases === 2 && gameState.fase === 1
     ? `Limite: ${t.vidas_qualificatoria} vidas`
     : '';
-  const cartaTxt = cartas != null ? `<b>${cartas}</b> carta${cartas !== 1 ? 's' : ''}` : 'cartas livres';
+  const regra = (gameState.fase === 2 && t.cartas_fase2) ? t.cartas_fase2 : t.cartas_fase1;
+  const regraTxt = t.sem_documentacao ? '' : `Cartas: ${descreverContagemCartas(regra)}`;
 
   panel.innerHTML = `
     <div class="torneio-info">
       <div class="torneio-info-row">
         <span class="torneio-info-label">${faseNome}</span>
-        <span class="torneio-info-rodada">Rodada ${gameState.rodada} — ${cartaTxt}</span>
+        <span class="torneio-info-rodada">Rodada ${gameState.rodada}</span>
       </div>
+      ${regraTxt ? `<div class="torneio-info-sub">${regraTxt}</div>` : ''}
       ${limiteInfo ? `<div class="torneio-info-sub">${limiteInfo}</div>` : ''}
       ${t.regras_extras ? `<div class="torneio-info-extras">⚠️ ${esc(t.regras_extras)}</div>` : ''}
     </div>
@@ -410,11 +379,15 @@ function renderControles(){
   const t = getTorneioRegra();
   const btnSet = document.getElementById('btnSetAll');
   const btnProx = document.getElementById('btnProxRodada');
-  if(!btnSet || !btnProx) return;
+  const btnAnt = document.getElementById('btnRodadaAnt');
+  const btnCancel = document.getElementById('btnCancelarEd');
+  if(!btnSet || !btnProx || !btnAnt) return;
 
   const qualif = isQualifying();
   btnSet.style.display = qualif ? 'none' : '';
   btnProx.style.display = (t && !qualif) ? '' : 'none';
+  btnAnt.style.display = (t && !qualif && gameState.rodada > 1) ? '' : 'none';
+  if(btnCancel) btnCancel.style.display = (usuarioLogado && t && players.length > 0) ? '' : 'none';
 }
 
 function popularSelectTorneioJogo(){
@@ -676,29 +649,46 @@ async function removerJogadorDoBanco() {
 }
 
 function popularSelectVice() {
-    const selectV = document.getElementById('selectVice');
-    if(!selectV) return;
+    const div = document.getElementById('viceList');
+    if(!div) return;
     const vices = players.filter(p => p.name !== atualCampeaoName);
-    selectV.innerHTML = '<option value="">Selecione o Vice-Campeão...</option>' +
-        vices.map(v => `<option value="${v.name}">${v.name}</option>`).join('');
+    if(!vices.length){
+        div.innerHTML = '<p style="color:rgba(255,255,255,.5);font-size:.8rem">Sem outros jogadores para vice.</p>';
+        return;
+    }
+    div.innerHTML = vices.map(v => `
+        <label class="penalizado-item">
+            <input type="checkbox" class="vice-check" value="${esc(v.name)}">
+            <span>${esc(v.name)}</span>
+        </label>`).join('');
 }
 
 async function registrarNoBanco() {
     if (!usuarioLogado) { abrirModal(); return; }
 
     const torneioId = parseInt(document.getElementById('selectTorneio').value);
-    const viceNome  = document.getElementById('selectVice').value;
+    const viceNomes = Array.from(document.querySelectorAll('#viceList input.vice-check:checked')).map(c => c.value);
     const btnSalvar = document.querySelector('.registro-banco .btn-r');
 
-    if (!torneioId || !viceNome) {
-        alert('Selecione o torneio e o vice-campeão antes de salvar!');
+    if (!torneioId || viceNomes.length === 0) {
+        alert('Selecione o torneio e ao menos um vice-campeão antes de salvar!');
         return;
     }
 
     const campeao = dbJogadores.find(j => j.nome.toLowerCase() === atualCampeaoName.toLowerCase());
-    const vice    = dbJogadores.find(j => j.nome.toLowerCase() === viceNome.toLowerCase());
-
     if (!campeao) { alert(`Jogador "${atualCampeaoName}" não encontrado no banco!`); return; }
+
+    const viceIds = [];
+    const naoEncontrados = [];
+    viceNomes.forEach(nome => {
+        const j = dbJogadores.find(x => x.nome.toLowerCase() === nome.toLowerCase());
+        if (j) viceIds.push(j.id); else naoEncontrados.push(nome);
+    });
+
+    if (naoEncontrados.length) {
+        if (!confirm(`Estes vices não estão no banco e serão ignorados: ${naoEncontrados.join(', ')}.\n\nContinuar mesmo assim?`)) return;
+    }
+    if (viceIds.length === 0) { alert('Nenhum vice válido encontrado no banco.'); return; }
 
     if (btnSalvar) { btnSalvar.textContent = '⏳ Salvando...'; btnSalvar.disabled = true; }
 
@@ -706,7 +696,7 @@ async function registrarNoBanco() {
         const data = await apiCall('/api/registrar', 'POST', {
             torneioId,
             campeaoId: campeao.id,
-            viceId: vice?.id ?? null
+            viceIds
         });
         if (!data) return;
         if (data.error) throw new Error(data.error);
@@ -719,6 +709,27 @@ async function registrarNoBanco() {
     } finally {
         if (btnSalvar) { btnSalvar.textContent = '💾 Salvar no Banco de Dados'; btnSalvar.disabled = false; }
     }
+}
+
+async function cancelarEdicao() {
+    if (!usuarioLogado) { abrirModal(); return; }
+
+    const t = getTorneioRegra();
+    if (!t) { alert('Selecione um torneio no jogo para cancelar a edição.'); return; }
+
+    const ed = (t.edicao_atual || 0) + 1;
+    if (!confirm(`Cancelar a ${ed}ª edição de "${t.nome}"?\n\nSerá registrada como CANCELADA — conta como edição disputada, mas sem campeão. O jogo atual será encerrado.`)) return;
+
+    const data = await apiCall('/api/cancelar-edicao', 'POST', { torneioId: t.id });
+    if (!data) return;
+    if (data.error) { alert('❌ ' + data.error); return; }
+
+    alert(`✅ ${data.message}`);
+    players = [];
+    gameState.fase = 1;
+    gameState.rodada = 1;
+    save();
+    await fetchDatabase();
 }
 
 // ── RENDER: STATS ─────────────────────────────────────────────
@@ -777,7 +788,13 @@ async function renderStatsGraficos() {
                             <span style="flex:1; text-align:center;">Confronto / Final</span>
                             <span style="width:70px; text-align:right;">Campeão</span>
                         </div>
-                        ${historico.length > 0 ? historico.map(p => `
+                        ${historico.length > 0 ? historico.map(p => p.cancelada ? `
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:8px; opacity:.55;">
+                                <span style="color:var(--muted); width:40px; font-weight:bold;">${p.edicao}º</span>
+                                <span style="flex:1; text-align:center; text-decoration:line-through;">🚫 Edição cancelada</span>
+                                <span style="color:var(--muted); width:70px; text-align:right;">—</span>
+                            </div>
+                        ` : `
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:8px;">
                                 <span style="color:var(--muted); width:40px; font-weight:bold;">${p.edicao}º</span>
                                 <span style="flex:1; text-align:center;">${p.placar_detalhado}</span>

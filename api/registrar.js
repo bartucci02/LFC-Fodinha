@@ -12,25 +12,33 @@ module.exports = async function handler(req, res) {
     const { data: { user }, error: authError } = await adminClient.auth.getUser(token);
     if (authError || !user) return res.status(401).json({ error: 'Não autorizado' });
 
-    const { torneioId, campeaoId, viceId } = req.body;
+    const { torneioId, campeaoId, viceId, viceIds } = req.body;
     if (!torneioId || !campeaoId) return res.status(400).json({ error: 'Dados incompletos' });
+
+    // Normaliza lista de vices: aceita viceIds (array) ou viceId (legado).
+    let viceIdList = Array.isArray(viceIds) ? viceIds : (viceId ? [viceId] : []);
+    viceIdList = [...new Set(viceIdList.map(Number))].filter(id => id && id !== Number(campeaoId));
 
     try {
         const { data: torneio } = await adminClient.from('torneios').select('*').eq('id', torneioId).single();
         const { data: campeao } = await adminClient.from('jogadores').select('*').eq('id', campeaoId).single();
-        const vice = viceId
-            ? (await adminClient.from('jogadores').select('*').eq('id', viceId).single()).data
-            : null;
+
+        const vices = [];
+        for (const vid of viceIdList) {
+            const { data: v } = await adminClient.from('jogadores').select('*').eq('id', vid).single();
+            if (v) vices.push(v);
+        }
 
         const novaEdicao = (torneio.edicao_atual || 0) + 1;
-        const placar = `${campeao.nome}${vice ? ' x ' + vice.nome : ''}`;
+        const placar = [campeao.nome, ...vices.map(v => v.nome)].join(' x ');
 
         // 1. Insere partida
         const { error: errP } = await adminClient.from('partidas').insert({
             torneio_id: torneioId,
             campeao_id: campeaoId,
             edicao: novaEdicao,
-            placar_detalhado: placar
+            placar_detalhado: placar,
+            cancelada: false
         });
         if (errP) throw new Error('Partida: ' + errP.message);
 
@@ -49,23 +57,23 @@ module.exports = async function handler(req, res) {
             .eq('id', campeaoId);
         if (errC) throw new Error('Campeão: ' + errC.message);
 
-        // 4. Vice: +1 final
-        if (vice) {
+        // 4. Cada vice: +1 final
+        for (const v of vices) {
             const { error: errV } = await adminClient.from('jogadores')
-                .update({ finais_total: (vice.finais_total || 0) + 1 })
-                .eq('id', viceId);
+                .update({ finais_total: (v.finais_total || 0) + 1 })
+                .eq('id', v.id);
             if (errV) throw new Error('Vice: ' + errV.message);
         }
 
-        // 5. Atualiza rivalidade se existir
-        if (vice) {
+        // 5. Atualiza rivalidade do campeão com cada vice (não entre vices)
+        for (const v of vices) {
             const { data: rival } = await adminClient.from('rivalidades')
                 .select('*')
-                .or(`and(jogador_1_id.eq.${campeaoId},jogador_2_id.eq.${viceId}),and(jogador_1_id.eq.${viceId},jogador_2_id.eq.${campeaoId})`)
+                .or(`and(jogador_1_id.eq.${campeaoId},jogador_2_id.eq.${v.id}),and(jogador_1_id.eq.${v.id},jogador_2_id.eq.${campeaoId})`)
                 .maybeSingle();
 
             if (rival) {
-                const upd = rival.jogador_1_id === campeaoId
+                const upd = rival.jogador_1_id === Number(campeaoId)
                     ? { vitorias_1: (rival.vitorias_1 || 0) + 1 }
                     : { vitorias_2: (rival.vitorias_2 || 0) + 1 };
                 await adminClient.from('rivalidades').update(upd).eq('id', rival.id);
@@ -75,11 +83,13 @@ module.exports = async function handler(req, res) {
         // 6. Atualiza maiores_campeoes
         const { data: histTorneio } = await adminClient.from('partidas')
             .select('campeao_id')
-            .eq('torneio_id', torneioId);
+            .eq('torneio_id', torneioId)
+            .eq('cancelada', false);
 
         if (histTorneio) {
             const contagem = {};
-            histTorneio.forEach(p => { contagem[p.campeao_id] = (contagem[p.campeao_id] || 0) + 1; });
+            histTorneio.filter(p => p.campeao_id != null)
+                .forEach(p => { contagem[p.campeao_id] = (contagem[p.campeao_id] || 0) + 1; });
             const maxTitulos = Math.max(...Object.values(contagem));
             const liderIds = Object.keys(contagem).filter(k => contagem[k] === maxTitulos);
             if (liderIds.length === 1) {
