@@ -531,16 +531,34 @@ function popularSelectRemover() {
 // ── SUPABASE: ESCRITA (via API backend) ───────────────────────
 
 async function apiCall(url, method, body) {
-    const { data: { session } } = await dbClient.auth.getSession();
+    let { data: { session } } = await dbClient.auth.getSession();
     if (!session) { abrirModal(); return null; }
-    const res = await fetch(url, {
+
+    const enviar = (token) => fetch(url, {
         method,
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
+            'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(body)
     });
+
+    let res = await enviar(session.access_token);
+
+    // Token expirado → tenta renovar 1x e reenvia
+    if (res.status === 401) {
+        const { data, error } = await dbClient.auth.refreshSession();
+        if (error || !data.session) {
+            await dbClient.auth.signOut();
+            usuarioLogado = null;
+            atualizarUI();
+            alert('Sessão expirada. Faça login novamente.');
+            abrirModal();
+            return null;
+        }
+        res = await enviar(data.session.access_token);
+    }
+
     return res.json();
 }
 
