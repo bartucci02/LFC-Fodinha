@@ -148,3 +148,27 @@ input:focus{outline:none;border-color:var(--red)}
 .form-torneio input:focus,.form-torneio textarea:focus{outline:none;border-color:var(--red)}
 .form-torneio .check-line{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-weight:600;color:var(--text);font-size:.85rem;margin-top:12px}
 .form-torneio .check-line input{width:auto}
+
+/* Rivalidades (aba ⚔️) */
+.riv-card{background:var(--bg);border-radius:8px;margin-bottom:10px;border-left:4px solid var(--red);overflow:hidden}
+.riv-card-btn{width:100%;background:transparent;border:none;color:var(--text);cursor:pointer;padding:12px;text-align:left}
+.riv-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:.7rem;color:var(--gold);text-transform:uppercase;font-weight:bold}
+.riv-finais{color:var(--muted);font-weight:700;white-space:nowrap}
+.riv-card-placar{display:flex;align-items:center;justify-content:space-between;font-size:1.1rem;font-weight:bold;gap:8px}
+.riv-jname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.riv-jname:last-child{text-align:right}
+.riv-jname small{color:var(--muted)}
+.riv-vs{background:var(--s3);padding:4px 10px;border-radius:20px;font-size:.9rem;color:var(--red);flex-shrink:0}
+.riv-detalhe{display:none;padding:0 12px 12px;border-top:1px solid var(--border)}
+.riv-detalhe.show{display:block}
+.riv-torneio-grupo{margin-top:12px}
+.riv-torneio-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--s3);padding-bottom:6px;margin-bottom:8px}
+.riv-torneio-nome{color:var(--gold);font-weight:700;font-size:.85rem}
+.riv-torneio-tally{color:var(--muted);font-size:.78rem;white-space:nowrap}
+.riv-torneio-tally b{color:var(--text)}
+.riv-confronto{display:flex;align-items:center;gap:8px;font-size:.82rem;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+.riv-confronto:last-child{border-bottom:none}
+.riv-ed{color:var(--muted);font-weight:700;width:36px;flex-shrink:0}
+.riv-placar{flex:1;min-width:0}
+.riv-vencedor{color:var(--green);font-weight:700;white-space:nowrap;flex-shrink:0}
+.riv-vazio{color:var(--muted);text-align:center;font-size:.82rem;padding:14px 0}

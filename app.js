@@ -5,6 +5,7 @@ const dbClient = supabase.createClient(supabaseUrl, supabaseKey);
 let dbJogadores = [];
 let dbTorneios = [];
 let dbRivalidades = [];
+let dbPartidas = [];
 let atualCampeaoName = "";
 let usuarioLogado = null;
 
@@ -433,8 +434,13 @@ async function fetchDatabase() {
         }
     }
 
+    const resPartidas = await dbClient.from('partidas')
+        .select('*, jogadores!campeao_id(nome)')
+        .order('edicao', { ascending: true });
+    if (!resPartidas.error) dbPartidas = resPartidas.data || [];
+
     const resRivalidades = await dbClient.from('rivalidades').select('*, j1:jogador_1_id(nome), j2:jogador_2_id(nome)');
-    if (resRivalidades.data) { dbRivalidades = resRivalidades.data; renderRivalidades(); }
+    if (resRivalidades.data) dbRivalidades = resRivalidades.data;
 
     const resJogadores = await dbClient.from('jogadores').select('*');
     if (!resJogadores.error) {
@@ -461,6 +467,7 @@ async function fetchDatabase() {
         render();
     }
 
+    renderRivalidades();
     renderStatsGraficos();
     renderTitulosDetalhados();
 }
@@ -531,34 +538,16 @@ function popularSelectRemover() {
 // ── SUPABASE: ESCRITA (via API backend) ───────────────────────
 
 async function apiCall(url, method, body) {
-    let { data: { session } } = await dbClient.auth.getSession();
+    const { data: { session } } = await dbClient.auth.getSession();
     if (!session) { abrirModal(); return null; }
-
-    const enviar = (token) => fetch(url, {
+    const res = await fetch(url, {
         method,
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify(body)
     });
-
-    let res = await enviar(session.access_token);
-
-    // Token expirado → tenta renovar 1x e reenvia
-    if (res.status === 401) {
-        const { data, error } = await dbClient.auth.refreshSession();
-        if (error || !data.session) {
-            await dbClient.auth.signOut();
-            usuarioLogado = null;
-            atualizarUI();
-            alert('Sessão expirada. Faça login novamente.');
-            abrirModal();
-            return null;
-        }
-        res = await enviar(data.session.access_token);
-    }
-
     return res.json();
 }
 
@@ -752,22 +741,78 @@ async function cancelarEdicao() {
 
 // ── RENDER: STATS ─────────────────────────────────────────────
 
+// Verifica se uma partida (final) foi um confronto direto entre os dois rivais:
+// ambos precisam ter sido finalistas e o campeão precisa ser um deles.
+function partidaEhConfronto(p, n1, n2){
+    if(p.cancelada || !p.placar_detalhado) return false;
+    const finalistas = p.placar_detalhado.split(/\s+x\s+/i).map(s => s.trim().toLowerCase());
+    const a = n1.toLowerCase(), b = n2.toLowerCase();
+    if(!finalistas.includes(a) || !finalistas.includes(b)) return false;
+    const champ = (p.jogadores?.nome || '').toLowerCase();
+    return champ === a || champ === b;
+}
+
 function renderRivalidades() {
     const rList = document.getElementById('rivalidadesList');
     if(!rList) return;
+
+    if(!dbRivalidades.length){
+        rList.innerHTML = '<p class="riv-vazio">Nenhuma rivalidade cadastrada.</p>';
+        return;
+    }
+
     const rivaisOrdenados = [...dbRivalidades].sort((a,b) => (b.vitorias_1 + b.vitorias_2) - (a.vitorias_1 + a.vitorias_2));
     rList.innerHTML = rivaisOrdenados.map(r => {
-        const total = r.vitorias_1 + r.vitorias_2;
+        const total = (r.vitorias_1 || 0) + (r.vitorias_2 || 0);
+        const n1 = r.j1?.nome || '?';
+        const n2 = r.j2?.nome || '?';
+
+        // Agrupa os confrontos por torneio.
+        const grupos = {};
+        dbPartidas.filter(p => partidaEhConfronto(p, n1, n2)).forEach(p => {
+            const tnome = dbTorneios.find(t => t.id === p.torneio_id)?.nome || 'Torneio desconhecido';
+            (grupos[tnome] = grupos[tnome] || []).push(p);
+        });
+        const torneiosOrdenados = Object.keys(grupos).sort((a,b) => a.localeCompare(b));
+
+        const corpo = torneiosOrdenados.length ? torneiosOrdenados.map(tnome => {
+            const lista = grupos[tnome].sort((a,b) => a.edicao - b.edicao);
+            let w1 = 0, w2 = 0;
+            const linhas = lista.map(p => {
+                const champ = p.jogadores?.nome || '?';
+                if(champ.toLowerCase() === n1.toLowerCase()) w1++;
+                else if(champ.toLowerCase() === n2.toLowerCase()) w2++;
+                return `<div class="riv-confronto">
+                    <span class="riv-ed">${p.edicao}ª</span>
+                    <span class="riv-placar">${esc(p.placar_detalhado)}</span>
+                    <span class="riv-vencedor">🏆 ${esc(champ)}</span>
+                </div>`;
+            }).join('');
+            return `<div class="riv-torneio-grupo">
+                <div class="riv-torneio-head">
+                    <span class="riv-torneio-nome">🏆 ${esc(tnome)}</span>
+                    <span class="riv-torneio-tally">${esc(n1)} <b>${w1}</b> — <b>${w2}</b> ${esc(n2)}</span>
+                </div>
+                ${linhas}
+            </div>`;
+        }).join('') : '<p class="riv-vazio">Nenhum confronto registrado no banco.</p>';
+
+        const detalheId = `riv-detail-${r.id}`;
         return `
-        <div style="background:var(--bg); border-radius:8px; padding:12px; margin-bottom:10px; border-left:4px solid var(--red);">
-            <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.7rem; color:var(--gold); text-transform:uppercase; font-weight:bold;">
-                <span>${r.nome_classico}</span>
-                <span>${total} Finais</span>
-            </div>
-            <div style="display:flex; align-items:center; justify-content:space-between; font-size:1.1rem; font-weight:bold;">
-                <span>${r.j1?.nome || '?'} <small style="color:var(--muted)">${r.vitorias_1}</small></span>
-                <span style="background:var(--s3); padding:4px 10px; border-radius:20px; font-size:0.9rem; color:var(--red);">VS</span>
-                <span><small style="color:var(--muted)">${r.vitorias_2}</small> ${r.j2?.nome || '?'}</span>
+        <div class="riv-card">
+            <button class="riv-card-btn" onclick="document.getElementById('${detalheId}').classList.toggle('show')">
+                <div class="riv-card-top">
+                    <span class="riv-classico">${esc(r.nome_classico || 'Clássico')}</span>
+                    <span class="riv-finais">${total} Finais ▼</span>
+                </div>
+                <div class="riv-card-placar">
+                    <span class="riv-jname">${esc(n1)} <small>${r.vitorias_1 || 0}</small></span>
+                    <span class="riv-vs">VS</span>
+                    <span class="riv-jname"><small>${r.vitorias_2 || 0}</small> ${esc(n2)}</span>
+                </div>
+            </button>
+            <div id="${detalheId}" class="riv-detalhe">
+                ${corpo}
             </div>
         </div>`;
     }).join('');
@@ -784,10 +829,7 @@ async function renderStatsGraficos() {
 
     const tList = document.getElementById('torniosList');
     if(tList && dbTorneios.length > 0) {
-        const { data: todasPartidas } = await dbClient
-            .from('partidas')
-            .select('*, jogadores!campeao_id(nome)')
-            .order('edicao', { ascending: true });
+        const todasPartidas = dbPartidas;
 
         const torneiosOrdenados = [...dbTorneios].sort((a, b) => (b.edicao_atual || 0) - (a.edicao_atual || 0));
 
