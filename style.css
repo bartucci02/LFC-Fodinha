@@ -198,3 +198,34 @@ input:focus{outline:none;border-color:var(--red)}
 .cz-pl{display:flex;flex-direction:column;gap:5px;margin-bottom:9px;font-size:.82rem;font-weight:600;color:var(--text)}
 .cz-pl em{color:var(--muted);font-style:normal;font-weight:500;font-size:.75rem}
 .cz-reset{width:100%;margin-top:12px}
+
+/* Champions League (aba Jogo) */
+.champions-panel{border-left:4px solid var(--gold)}
+.cl-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.cl-title{font-size:1rem;font-weight:900;color:var(--gold);letter-spacing:.5px}
+.cl-progress{display:flex;align-items:center;gap:6px}
+.cl-dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:800;background:var(--s2);color:var(--muted);border:1px solid var(--s3);flex-shrink:0}
+.cl-dot.done{background:var(--green);color:#fff;border-color:var(--green)}
+.cl-dot.cur{background:var(--gold);color:#0d1117;border-color:var(--gold);box-shadow:0 0 8px rgba(227,179,65,.5)}
+.cl-dot-final{font-size:.85rem}
+.cl-fase{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:.82rem;color:var(--text);line-height:1.45;margin-bottom:12px}
+.cl-fase b{color:var(--gold)}
+.cl-fase-final{border-color:var(--gold);background:#1a1600}
+.cl-alerta{background:rgba(248,81,73,.12);border:1px solid var(--red);border-radius:8px;padding:9px 12px;font-size:.8rem;color:var(--text);line-height:1.4;margin-bottom:12px}
+.cl-alerta b{color:var(--red)}
+.cl-dist{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:12px}
+.cl-dist-head{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.cl-dist-grid{display:flex;flex-wrap:wrap;gap:6px}
+.cl-dist-cell{display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--s2);border:1px solid var(--s3);border-radius:8px;padding:6px 10px;min-width:52px}
+.cl-pos{font-size:.72rem;font-weight:800;color:var(--muted)}
+.cl-vida{font-size:.8rem;font-weight:800;color:var(--text);white-space:nowrap}
+.cl-ordem{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:12px}
+.cl-ordem-head{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.cl-erow{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.88rem}
+.cl-erow:last-child{border-bottom:none}
+.cl-epos{color:var(--gold);font-weight:800;width:32px;flex-shrink:0}
+.cl-enome{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.cl-evida{color:var(--red);font-weight:800;white-space:nowrap;font-size:.8rem}
+.cl-vazio{color:var(--muted);font-size:.8rem;text-align:center;padding:10px 0;margin-bottom:12px;line-height:1.45}
+.cl-btn{width:100%;margin-bottom:10px}
+.cl-reset{width:100%}

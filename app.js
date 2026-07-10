@@ -212,6 +212,111 @@ function reiniciarCupimzao(){
   render();
 }
 
+// ── CHAMPIONS LEAGUE ──────────────────────────────────────────
+// Torneio exclusivo de duas fases. Fase 1: todos começam com 4 vidas e
+// jogam até sobrar um; a ORDEM de eliminação define as vidas da Fase 2
+// (último eliminado = 4 vidas, cada colocação acima soma +1, teto de 10).
+// Fase 2: mata-mata normal com as vidas herdadas até restar o campeão.
+const CHAMPIONS_VIDAS_FASE1 = 4;   // vidas iniciais de todos na Fase 1
+const CHAMPIONS_VIDA_MIN = 4;      // piso de vidas na Fase 2 (último(s) lugar(es))
+const CHAMPIONS_VIDA_MAX = 10;     // teto de vidas na Fase 2 (campeão da Fase 1)
+
+let champions = JSON.parse(localStorage.getItem('lfc_champions') || 'null');
+
+function saveChampions(){
+  localStorage.setItem('lfc_champions', JSON.stringify(champions));
+}
+
+function isChampions(){
+  const t = getTorneioRegra();
+  return !!(t && normalizarNome(t.nome) === 'champions league');
+}
+
+function isChampionsFase1(){
+  return isChampions() && gameState.fase === 1;
+}
+
+function ensureChampionsState(){
+  if(gameState.torneioId && dbTorneios.length === 0) return;
+  if(isChampions()){
+    if(!champions){ champions = { ordem: [], ranking: null }; saveChampions(); }
+  } else if(champions){
+    champions = null; saveChampions();
+  }
+}
+
+// Vidas da Fase 2 por colocação (índice 0 = 1º lugar / campeão da Fase 1).
+// Campeão = min(4 + (n-1), 10); cada posição abaixo perde 1 vida, piso 4.
+function championsDistribuicao(n){
+  const base = Math.min(CHAMPIONS_VIDA_MIN + (n - 1), CHAMPIONS_VIDA_MAX);
+  const arr = [];
+  for(let p = 1; p <= n; p++){
+    arr.push(Math.max(base - (p - 1), CHAMPIONS_VIDA_MIN));
+  }
+  return arr;
+}
+
+// Mantém champions.ordem = nomes eliminados na ordem em que zeraram as vidas.
+function atualizarOrdemChampions(){
+  if(!champions) return;
+  players.forEach(p => {
+    if(p.lives === 0 && !champions.ordem.includes(p.name)){
+      champions.ordem.push(p.name);
+    }
+  });
+  champions.ordem = champions.ordem.filter(nome => {
+    const pl = players.find(p => p.name === nome);
+    return pl && pl.lives === 0;
+  });
+  saveChampions();
+}
+
+function encerrarFase1Champions(){
+  if(!isChampionsFase1() || !champions) return;
+  if(players.length < 5){
+    alert('A Champions League exige 5 ou mais jogadores.');
+    return;
+  }
+  const vivos = players.filter(p => p.lives > 0);
+  if(vivos.length !== 1){
+    alert('A Fase 1 termina quando resta apenas 1 jogador vivo. Elimine os demais primeiro (zere as vidas deles).');
+    return;
+  }
+  atualizarOrdemChampions();
+
+  const campeaoFase1 = vivos[0].name;
+  // Ranking do 1º ao último = campeão + eliminados em ordem inversa.
+  const ranking = [campeaoFase1, ...[...champions.ordem].reverse()];
+  const dist = championsDistribuicao(ranking.length);
+
+  const vidasPorNome = {};
+  const rankingInfo = ranking.map((nome, i) => {
+    vidasPorNome[nome] = dist[i];
+    return { nome, pos: i + 1, vidas: dist[i] };
+  });
+
+  players.forEach(p => {
+    const v = vidasPorNome[p.name] ?? CHAMPIONS_VIDA_MIN;
+    p.lives = v; p.max = v;
+  });
+
+  champions.ranking = rankingInfo;
+  gameState.fase = 2;
+  gameState.rodada = 1;
+  saveChampions(); save(); render();
+  setTimeout(() => alert('🎯 Fim da Fase 1 da Champions League!\nAs vidas foram distribuídas pela colocação. Começa o mata-mata da Fase 2 — agora as vidas só caem.'), 50);
+}
+
+function reiniciarChampions(){
+  if(!confirm('Reiniciar a Champions League? A Fase 1 recomeça com todos em 4 vidas.')) return;
+  champions = { ordem: [], ranking: null };
+  saveChampions();
+  players.forEach(p => { p.lives = CHAMPIONS_VIDAS_FASE1; p.max = CHAMPIONS_VIDAS_FASE1; });
+  gameState.fase = 1;
+  gameState.rodada = 1;
+  save(); render();
+}
+
 function getTorneioRegra(){
   if(!gameState.torneioId) return null;
   return dbTorneios.find(t => t.id === gameState.torneioId) || null;
@@ -219,13 +324,18 @@ function getTorneioRegra(){
 
 function isQualifying(){
   const t = getTorneioRegra();
-  return !!(t && t.fases === 2 && gameState.fase === 1);
+  return !!(t && t.fases === 2 && gameState.fase === 1 && !isChampions());
 }
 
 function aplicarVidasIniciais(){
   const t = getTorneioRegra();
   if(!t){
     players.forEach(p => { p.lives = p.max || 5; });
+    return;
+  }
+  if(isChampions()){
+    players.forEach(p => { p.lives = CHAMPIONS_VIDAS_FASE1; p.max = CHAMPIONS_VIDAS_FASE1; });
+    if(champions){ champions.ordem = []; champions.ranking = null; saveChampions(); }
     return;
   }
   if(t.fases === 2){
@@ -263,7 +373,10 @@ function addPlayer(){
   const t = getTorneioRegra();
   let lives, max;
   if(t){
-    if(t.fases === 2){
+    if(isChampions()){
+      lives = gameState.fase === 1 ? CHAMPIONS_VIDAS_FASE1 : CHAMPIONS_VIDA_MIN;
+      max = lives;
+    } else if(t.fases === 2){
       lives = 0;
       max = t.vidas_qualificatoria || 5;
     } else {
@@ -288,10 +401,15 @@ function chgLives(i, d){
     return;
   }
   players[i].lives = Math.max(0, players[i].lives + d);
+  if(isChampionsFase1()) atualizarOrdemChampions();
   save(); render();
 }
 
-function rmPlayer(i){ players.splice(i,1); save(); render(); }
+function rmPlayer(i){
+  players.splice(i,1);
+  if(isChampionsFase1()) atualizarOrdemChampions();
+  save(); render();
+}
 
 function resetGame(){
   if(players.length && !confirm('Iniciar novo jogo? (O torneio selecionado será mantido)')) return;
@@ -301,6 +419,10 @@ function resetGame(){
   if(isCupimzao()){
     cupimzao = { etapa: 1, pontos: {}, podios: [] };
     saveCupimzao();
+  }
+  if(isChampions()){
+    champions = { ordem: [], ranking: null };
+    saveChampions();
   }
   save(); render();
 }
@@ -362,9 +484,11 @@ function proximaRodadaQualificatoria(){
 
 function render(){
   ensureCupimzaoState();
+  ensureChampionsState();
   renderTorneioPanel();
   renderQualifyingPanel();
   renderCupimzaoPanel();
+  renderChampionsPanel();
   renderControles();
 
   const list = document.getElementById('playerList');
@@ -378,8 +502,10 @@ function render(){
   const semVencedorAutomatico = isQualifying();
   // Durante os 3 cupins não há campeão automático — o pódio é registrado à mão.
   const emCupimEtapa = isCupimzao() && cupimzao && !cupimzaoNoFinal();
+  // Na Fase 1 da Champions não há campeão automático — só ao fim do mata-mata (Fase 2).
+  const emChampionsFase1 = isChampionsFase1();
   const alive = players.filter(p=>p.lives>0);
-  const winner = !semVencedorAutomatico && !emCupimEtapa && alive.length===1 && players.length>1 ? alive[0] : null;
+  const winner = !semVencedorAutomatico && !emCupimEtapa && !emChampionsFase1 && alive.length===1 && players.length>1 ? alive[0] : null;
   banner.classList.toggle('show',!!winner);
 
   if(winner) {
@@ -440,10 +566,15 @@ function renderTorneioPanel(){
     inputLives.value = t.fases === 2 ? 0 : (t.vidas_iniciais || 5);
   }
 
-  const faseNome = t.fases === 2
-    ? (gameState.fase === 1 ? '⚡ Fase Qualificatória' : '🎯 Fase Padrão')
-    : '🎮 Fase Única';
-  const limiteInfo = t.fases === 2 && gameState.fase === 1
+  let faseNome;
+  if(isChampions()){
+    faseNome = gameState.fase === 1 ? '🏆 Champions — Fase 1 (4 vidas)' : '🎯 Champions — Fase 2 (mata-mata)';
+  } else if(t.fases === 2){
+    faseNome = gameState.fase === 1 ? '⚡ Fase Qualificatória' : '🎯 Fase Padrão';
+  } else {
+    faseNome = '🎮 Fase Única';
+  }
+  const limiteInfo = (!isChampions() && t.fases === 2 && gameState.fase === 1)
     ? `Limite: ${t.vidas_qualificatoria} vidas`
     : '';
   const regra = (gameState.fase === 2 && t.cartas_fase2) ? t.cartas_fase2 : t.cartas_fase1;
@@ -563,6 +694,99 @@ function renderCupimzaoPanel(){
   }
 }
 
+function renderChampionsPanel(){
+  const div = document.getElementById('championsPanel');
+  if(!div) return;
+
+  if(!isChampions() || !champions){
+    div.style.display = 'none';
+    div.innerHTML = '';
+    return;
+  }
+
+  div.style.display = 'block';
+  const fase = gameState.fase;
+  const vivos = players.filter(p => p.lives > 0);
+  const noFinal = fase > 1 && vivos.length === 1 && players.length > 1;
+
+  const dots = `
+    <span class="cl-dot ${fase>1?'done':'cur'}">1</span>
+    <span class="cl-dot ${fase>1 && !noFinal ? 'cur' : (fase>1?'done':'')}">2</span>
+    <span class="cl-dot cl-dot-final ${noFinal?'cur':''}">🏆</span>`;
+
+  let corpo;
+
+  if(fase === 1){
+    const n = players.length;
+    const poucos = n < 5;
+    const dist = championsDistribuicao(Math.max(n, 1));
+
+    const preview = n >= 1 ? `
+      <div class="cl-dist">
+        <div class="cl-dist-head">Vidas da Fase 2 por colocação — ${n} jogador${n===1?'':'es'}</div>
+        <div class="cl-dist-grid">
+          ${dist.map((v, i) => `
+            <div class="cl-dist-cell">
+              <span class="cl-pos">${i+1}º</span>
+              <span class="cl-vida">❤️ ${v}</span>
+            </div>`).join('')}
+        </div>
+      </div>` : '';
+
+    const ordem = champions.ordem;
+    const eliminados = ordem.length ? `
+      <div class="cl-ordem">
+        <div class="cl-ordem-head">Eliminados — define a colocação</div>
+        ${ordem.map((nome, i) => {
+          const pos = n - i; // 1º eliminado = último lugar
+          const vidas = dist[pos-1] ?? CHAMPIONS_VIDA_MIN;
+          return `<div class="cl-erow">
+            <span class="cl-epos">${pos}º</span>
+            <span class="cl-enome">${esc(nome)}</span>
+            <span class="cl-evida">❤️ ${vidas} na Fase 2</span>
+          </div>`;
+        }).join('')}
+      </div>` : '<p class="cl-vazio">Ninguém eliminado ainda — jogue a Fase 1 no placar abaixo. Ao zerar as vidas de um jogador ele é eliminado e sua colocação fica registrada.</p>';
+
+    const podeEncerrar = !poucos && vivos.length === 1 && n > 1;
+    const btnEncerrar = podeEncerrar
+      ? `<button class="btn btn-r cl-btn" onclick="encerrarFase1Champions()">🏁 Encerrar Fase 1 e distribuir vidas</button>`
+      : '';
+
+    corpo = `
+      <div class="cl-fase">Fase <b>1</b> — todos começam com <b>4 vidas</b>. Jogue até sobrar um. A <b>ordem de eliminação</b> define as vidas da Fase 2: o último eliminado leva 4 e cada colocação acima soma +1, até o teto de <b>10</b>.</div>
+      ${poucos ? `<div class="cl-alerta">⚠️ A Champions League exige <b>5 ou mais jogadores</b>. Adicione mais para encerrar a Fase 1.</div>` : ''}
+      ${preview}
+      ${eliminados}
+      ${btnEncerrar}
+      <button class="btn btn-g cl-reset" onclick="reiniciarChampions()">🔄 Reiniciar Champions</button>`;
+  } else {
+    const ranking = champions.ranking || [];
+    const tabela = ranking.length ? `
+      <div class="cl-dist">
+        <div class="cl-dist-head">Classificação da Fase 1 → vidas iniciais da Fase 2</div>
+        ${ranking.map(r => `
+          <div class="cl-erow">
+            <span class="cl-epos">${r.pos}º</span>
+            <span class="cl-enome">${esc(r.nome)}</span>
+            <span class="cl-evida">❤️ ${r.vidas}</span>
+          </div>`).join('')}
+      </div>` : '';
+
+    corpo = `
+      <div class="cl-fase cl-fase-final">Fase <b>2</b> — <b>mata-mata</b> com as vidas herdadas da Fase 1. As vidas só caem: o último jogador vivo é o <b>campeão da Champions</b>.</div>
+      ${tabela}
+      <button class="btn btn-g cl-reset" onclick="reiniciarChampions()">🔄 Reiniciar Champions</button>`;
+  }
+
+  div.innerHTML = `
+    <div class="cl-head">
+      <span class="cl-title">🏆 Champions League</span>
+      <div class="cl-progress">${dots}</div>
+    </div>
+    ${corpo}`;
+}
+
 function renderControles(){
   const t = getTorneioRegra();
   const btnSet = document.getElementById('btnSetAll');
@@ -572,7 +796,8 @@ function renderControles(){
   if(!btnSet || !btnProx || !btnAnt) return;
 
   const qualif = isQualifying();
-  btnSet.style.display = qualif ? 'none' : '';
+  const champ1 = isChampionsFase1();
+  btnSet.style.display = (qualif || champ1) ? 'none' : '';
   btnProx.style.display = (t && !qualif) ? '' : 'none';
   btnAnt.style.display = (t && !qualif && gameState.rodada > 1) ? '' : 'none';
   if(btnCancel) btnCancel.style.display = (usuarioLogado && t && players.length > 0) ? '' : 'none';
@@ -684,6 +909,18 @@ function renderRegrasTorneios(){
     }
     const ordenados = [...dbTorneios].sort((a,b)=>a.nome.localeCompare(b.nome));
     div.innerHTML = ordenados.map(t => {
+        if(normalizarNome(t.nome) === 'champions league'){
+            return `<div class="regra-card">
+                <h4>${esc(t.nome)} <span class="regra-fases fase2">2 fases</span></h4>
+                <div class="regra-list">
+                    <span class="regra-badge">Fase 1: <b>4 vidas</b> p/ todos</span>
+                    <span class="regra-badge">Vidas Fase 2: <b>por colocação (4 → 10)</b></span>
+                    <span class="regra-badge">Cartas: <b>padrão (1 → 5)</b></span>
+                    <span class="regra-badge">Jogadores: <b>5+</b></span>
+                </div>
+                <div class="regra-extras">🏆 <b>Fase 1:</b> todos começam com 4 vidas e jogam até sobrar um. A ordem de eliminação define as vidas da Fase 2 — o último eliminado leva 4 e cada colocação acima soma +1, até o teto de 10 (o campeão da Fase 1). <b>Fase 2:</b> mata-mata com as vidas herdadas até restar o campeão.</div>
+            </div>`;
+        }
         if(t.sem_documentacao){
             return `<div class="regra-card">
                 <h4>${esc(t.nome)} <span class="regra-fases">sem doc.</span></h4>
@@ -902,6 +1139,16 @@ async function registrarNoBanco() {
             cupimzao = { etapa: 1, pontos: {}, podios: [] };
             saveCupimzao();
             players = [];
+            gameState.rodada = 1;
+            save();
+        }
+
+        // Champions League: após registrar o campeão, encerra a sessão local.
+        if(isChampions()){
+            champions = { ordem: [], ranking: null };
+            saveChampions();
+            players = [];
+            gameState.fase = 1;
             gameState.rodada = 1;
             save();
         }
