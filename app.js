@@ -108,6 +108,110 @@ function save(){
   localStorage.setItem('lfc_gamestate', JSON.stringify(gameState));
 }
 
+// ── CUPIMZÃO ──────────────────────────────────────────────────
+// Torneio especial: 3 "cupins" internos (não contam como título de Cupim)
+// somam pontos ao pódio (1º=3, 2º=2, 3º=1) e a Grande Final é disputada
+// com os pontos acumulados como vidas.
+const CUPIMZAO_PONTOS = [3, 2, 1];   // 1º, 2º, 3º
+const CUPIMZAO_NUM_CUPINS = 3;
+const CUPIMZAO_VIDAS_CUPIM = 3;      // vidas de cada cupim (fixo:3)
+
+let cupimzao = JSON.parse(localStorage.getItem('lfc_cupimzao') || 'null');
+
+function saveCupimzao(){
+  localStorage.setItem('lfc_cupimzao', JSON.stringify(cupimzao));
+}
+
+function normalizarNome(s){
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+function isCupimzao(){
+  const t = getTorneioRegra();
+  return !!(t && normalizarNome(t.nome) === 'cupimzao');
+}
+
+// Só decide o estado quando os torneios já foram carregados (evita apagar
+// uma sessão em andamento durante o primeiro render, antes do fetch).
+function ensureCupimzaoState(){
+  if(gameState.torneioId && dbTorneios.length === 0) return;
+  if(isCupimzao()){
+    if(!cupimzao){
+      cupimzao = { etapa: 1, pontos: {}, podios: [] };
+      saveCupimzao();
+    }
+  } else if(cupimzao){
+    cupimzao = null;
+    saveCupimzao();
+  }
+}
+
+function cupimzaoNoFinal(){
+  return !!(cupimzao && cupimzao.etapa > CUPIMZAO_NUM_CUPINS);
+}
+
+function registrarPodioCupim(){
+  if(!isCupimzao() || !cupimzao || cupimzaoNoFinal()) return;
+
+  const val = id => (document.getElementById(id)?.value || '');
+  const escolhidos = [val('czPodio1'), val('czPodio2'), val('czPodio3')];
+  const preenchidos = escolhidos.filter(Boolean);
+  const exigidos = Math.min(3, players.length);
+
+  if(preenchidos.length < exigidos){
+    alert('Selecione o pódio completo (1º, 2º e 3º lugares).');
+    return;
+  }
+  if(new Set(preenchidos).size !== preenchidos.length){
+    alert('Cada posição do pódio precisa ser um jogador diferente.');
+    return;
+  }
+
+  escolhidos.forEach((nome, i) => {
+    if(nome) cupimzao.pontos[nome] = (cupimzao.pontos[nome] || 0) + CUPIMZAO_PONTOS[i];
+  });
+  cupimzao.podios.push({ primeiro: escolhidos[0], segundo: escolhidos[1], terceiro: escolhidos[2] });
+
+  const cupimConcluido = cupimzao.etapa;
+  cupimzao.etapa += 1;
+  saveCupimzao();
+
+  if(!cupimzaoNoFinal()){
+    players.forEach(p => { p.lives = CUPIMZAO_VIDAS_CUPIM; p.max = CUPIMZAO_VIDAS_CUPIM; });
+    gameState.rodada = 1;
+    save();
+    render();
+    setTimeout(() => alert(`✅ Pódio do Cupim ${cupimConcluido} registrado!\nIniciando o Cupim ${cupimzao.etapa} de ${CUPIMZAO_NUM_CUPINS}.`), 50);
+  } else {
+    iniciarFinalCupimzao();
+    render();
+    setTimeout(() => alert('🏆 Fim dos 3 cupins! Grande Final iniciada — cada jogador começa com os pontos acumulados como vidas.'), 50);
+  }
+}
+
+function iniciarFinalCupimzao(){
+  // A final reúne todos que somaram pontos, começando com pontos = vidas.
+  const nomes = Object.keys(cupimzao.pontos).filter(n => (cupimzao.pontos[n] || 0) > 0);
+  players = nomes
+    .sort((a, b) => cupimzao.pontos[b] - cupimzao.pontos[a])
+    .map(n => {
+      const pts = cupimzao.pontos[n];
+      return { name: n, lives: pts, max: Math.max(pts, 1) };
+    });
+  gameState.rodada = 1;
+  save();
+}
+
+function reiniciarCupimzao(){
+  if(!confirm('Reiniciar o Cupimzão? Os pontos acumulados e os pódios registrados serão apagados.')) return;
+  cupimzao = { etapa: 1, pontos: {}, podios: [] };
+  saveCupimzao();
+  players.forEach(p => { p.lives = CUPIMZAO_VIDAS_CUPIM; p.max = CUPIMZAO_VIDAS_CUPIM; });
+  gameState.rodada = 1;
+  save();
+  render();
+}
+
 function getTorneioRegra(){
   if(!gameState.torneioId) return null;
   return dbTorneios.find(t => t.id === gameState.torneioId) || null;
@@ -194,6 +298,10 @@ function resetGame(){
   players = [];
   gameState.fase = 1;
   gameState.rodada = 1;
+  if(isCupimzao()){
+    cupimzao = { etapa: 1, pontos: {}, podios: [] };
+    saveCupimzao();
+  }
   save(); render();
 }
 
@@ -253,8 +361,10 @@ function proximaRodadaQualificatoria(){
 }
 
 function render(){
+  ensureCupimzaoState();
   renderTorneioPanel();
   renderQualifyingPanel();
+  renderCupimzaoPanel();
   renderControles();
 
   const list = document.getElementById('playerList');
@@ -266,8 +376,10 @@ function render(){
 
   const t = getTorneioRegra();
   const semVencedorAutomatico = isQualifying();
+  // Durante os 3 cupins não há campeão automático — o pódio é registrado à mão.
+  const emCupimEtapa = isCupimzao() && cupimzao && !cupimzaoNoFinal();
   const alive = players.filter(p=>p.lives>0);
-  const winner = !semVencedorAutomatico && alive.length===1 && players.length>1 ? alive[0] : null;
+  const winner = !semVencedorAutomatico && !emCupimEtapa && alive.length===1 && players.length>1 ? alive[0] : null;
   banner.classList.toggle('show',!!winner);
 
   if(winner) {
@@ -374,6 +486,81 @@ function renderQualifyingPanel(){
     </div>
     <button class="btn btn-r" style="width:100%" onclick="proximaRodadaQualificatoria()">➡️ Confirmar e Avançar Rodada</button>
   `;
+}
+
+function renderCupimzaoPanel(){
+  const div = document.getElementById('cupimzaoPanel');
+  if(!div) return;
+
+  if(!isCupimzao() || !cupimzao){
+    div.style.display = 'none';
+    div.innerHTML = '';
+    return;
+  }
+
+  div.style.display = 'block';
+  const noFinal = cupimzaoNoFinal();
+  const etapa = cupimzao.etapa;
+
+  // Progresso: 3 cupins + final
+  const dots = [];
+  for(let n = 1; n <= CUPIMZAO_NUM_CUPINS; n++){
+    const feito = etapa > n;
+    const atual = etapa === n;
+    dots.push(`<span class="cz-dot ${feito?'done':''} ${atual?'cur':''}">${feito?'✓':n}</span>`);
+  }
+  dots.push(`<span class="cz-dot cz-dot-final ${noFinal?'cur':''}">🏆</span>`);
+
+  // Tabela de pontos acumulados
+  const ranking = Object.entries(cupimzao.pontos).sort((a,b)=>b[1]-a[1]);
+  const tabela = ranking.length ? `
+    <div class="cz-pontos">
+      <div class="cz-pontos-head">Pontos acumulados</div>
+      ${ranking.map(([n,p], i)=>`
+        <div class="cz-prow">
+          <span class="cz-pos">${i+1}º</span>
+          <span class="cz-nome">${esc(n)}</span>
+          <span class="cz-pts">${p} pt${p===1?'':'s'}</span>
+        </div>`).join('')}
+    </div>` : '<p class="cz-vazio">Nenhum ponto somado ainda — registre o pódio do primeiro cupim.</p>';
+
+  let corpo;
+  if(noFinal){
+    corpo = `
+      <div class="cz-fase cz-fase-final">🏆 <b>Grande Final</b> — disputada com os pontos acumulados como vidas. O vencedor é o campeão do Cupimzão.</div>
+      ${tabela}
+      <button class="btn btn-g cz-reset" onclick="reiniciarCupimzao()">🔄 Reiniciar Cupimzão</button>`;
+  } else {
+    const opts = ['<option value="">—</option>']
+      .concat(players.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`)).join('');
+    corpo = `
+      <div class="cz-fase">Cupim <b>${etapa}</b> de ${CUPIMZAO_NUM_CUPINS} — jogue normalmente no placar abaixo. Ao terminar, registre o pódio.</div>
+      ${tabela}
+      <div class="cz-podio-form">
+        <div class="cz-podio-title">📋 Pódio do Cupim ${etapa}</div>
+        <label class="cz-pl"><span>🥇 1º lugar <em>(+3 pts)</em></span><select id="czPodio1" class="select-db">${opts}</select></label>
+        <label class="cz-pl"><span>🥈 2º lugar <em>(+2 pts)</em></span><select id="czPodio2" class="select-db">${opts}</select></label>
+        <label class="cz-pl"><span>🥉 3º lugar <em>(+1 pt)</em></span><select id="czPodio3" class="select-db">${opts}</select></label>
+        <button class="btn btn-r" style="width:100%;margin-top:10px" onclick="registrarPodioCupim()">✅ Registrar pódio e avançar</button>
+      </div>
+      <button class="btn btn-g cz-reset" onclick="reiniciarCupimzao()">🔄 Reiniciar Cupimzão</button>`;
+  }
+
+  div.innerHTML = `
+    <div class="cz-head">
+      <span class="cz-title">🪵 Cupimzão</span>
+      <div class="cz-progress">${dots.join('')}</div>
+    </div>
+    ${corpo}`;
+
+  // Sugere o pódio pela classificação atual de vidas (o admin pode ajustar).
+  if(!noFinal){
+    const rank = players.map(p=>({name:p.name, lives:p.lives})).sort((a,b)=>b.lives-a.lives);
+    ['czPodio1','czPodio2','czPodio3'].forEach((id, i)=>{
+      const sel = document.getElementById(id);
+      if(sel && rank[i]) sel.value = rank[i].name;
+    });
+  }
 }
 
 function renderControles(){
@@ -709,6 +896,16 @@ async function registrarNoBanco() {
         if (data.error) throw new Error(data.error);
 
         alert(`✅ ${data.message}`);
+
+        // Cupimzão: após registrar o campeão da final, encerra a sessão local.
+        if(isCupimzao()){
+            cupimzao = { etapa: 1, pontos: {}, podios: [] };
+            saveCupimzao();
+            players = [];
+            gameState.rodada = 1;
+            save();
+        }
+
         await fetchDatabase();
 
     } catch(e) {

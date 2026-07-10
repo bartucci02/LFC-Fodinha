@@ -172,3 +172,29 @@ input:focus{outline:none;border-color:var(--red)}
 .riv-placar{flex:1;min-width:0}
 .riv-vencedor{color:var(--green);font-weight:700;white-space:nowrap;flex-shrink:0}
 .riv-vazio{color:var(--muted);text-align:center;font-size:.82rem;padding:14px 0}
+
+/* Cupimzão (aba Jogo) */
+.cupimzao-panel{border-left:4px solid var(--red)}
+.cz-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.cz-title{font-size:1rem;font-weight:900;color:var(--gold);letter-spacing:.5px}
+.cz-progress{display:flex;align-items:center;gap:6px}
+.cz-dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:800;background:var(--s2);color:var(--muted);border:1px solid var(--s3);flex-shrink:0}
+.cz-dot.done{background:var(--green);color:#fff;border-color:var(--green)}
+.cz-dot.cur{background:var(--red);color:#fff;border-color:var(--red);box-shadow:0 0 8px rgba(248,81,73,.5)}
+.cz-dot-final{font-size:.85rem}
+.cz-fase{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:.82rem;color:var(--text);line-height:1.45;margin-bottom:12px}
+.cz-fase b{color:var(--gold)}
+.cz-fase-final{border-color:var(--gold);background:#1a1600}
+.cz-vazio{color:var(--muted);font-size:.8rem;text-align:center;padding:10px 0;margin-bottom:12px}
+.cz-pontos{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:12px}
+.cz-pontos-head{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.cz-prow{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.88rem}
+.cz-prow:last-child{border-bottom:none}
+.cz-pos{color:var(--muted);font-weight:800;width:28px;flex-shrink:0}
+.cz-nome{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.cz-pts{color:var(--red);font-weight:800;white-space:nowrap}
+.cz-podio-form{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px}
+.cz-podio-title{font-size:.8rem;font-weight:700;color:var(--gold);margin-bottom:10px}
+.cz-pl{display:flex;flex-direction:column;gap:5px;margin-bottom:9px;font-size:.82rem;font-weight:600;color:var(--text)}
+.cz-pl em{color:var(--muted);font-style:normal;font-weight:500;font-size:.75rem}
+.cz-reset{width:100%;margin-top:12px}
